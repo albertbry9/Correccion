@@ -356,6 +356,89 @@ public class RateDSCorregidos {
         }
         return m_tmp;
     }
+
+    public static int parametrosCalculables(ArrayList<int[]> indices_adyacencia,ArrayList<int[]> dataset)
+    {
+        HashMap<Integer,Integer>[] card_original = Cardinality(dataset);
+        double[] cards = get_cards_dimension(card_original);
+        int k = 0;
+        int aux = 1;
+        for(int i = 0; i < indices_adyacencia.size(); i++)
+        {
+            if(indices_adyacencia.get(i).length == 1){
+                k+=(cards[i]-1);
+            }
+            else
+            {
+                for (int j = 0; j < indices_adyacencia.get(i).length - 1;j++)
+                {
+                    aux*=cards[indices_adyacencia.get(i)[j]];
+                }
+                k+=(cards[i]-1)*aux;
+            }
+            aux = 1;
+        }
+        return k;
+    }
+
+    public static ArrayList<Double> entropiaGrafo(ArrayList<int[]> dataset, int[] cols, double alpha, int idx, ArrayList<Integer>pcc, ArrayList<Double> almacen, HashMap<Integer,Integer>[] cards) throws IOException{
+        double[] num_cards = get_cards_dimension(cards);
+        if (idx==cols.length){
+            int[] arr1 = new int[num_cards.length];
+            int[] arr2;
+            Arrays.fill(arr1,-1);
+            for (int i = 0;i<pcc.size();i++ ){
+                arr1[cols[i]] = pcc.get(i);
+            }
+            arr2 = arr1.clone();
+            arr2[cols[cols.length-1]] = -1;
+            aux+=conditional_probability(dataset,arr2,arr1,alpha);
+            aux2.add(conditional_probability(dataset,arr2,arr1,alpha));
+            if(aux2.size()==num_cards[cols[cols.length-1]]){
+                for(int k = 0; k<aux2.size();k++){
+                    almacen.add(Math.log10(aux2.get(k)/aux)*(-1)* Count(dataset,arr1));
+                }
+                aux2 = new ArrayList<>();
+                aux = 0.0;
+            }
+            return almacen;
+        }
+
+        double c = num_cards[cols[idx]];
+
+        for(int i = 0; i< c;i++){
+            pcc.add(i);
+            entropiaGrafo(dataset,cols,alpha,idx+1,pcc,almacen,cards);
+            pcc.remove(idx);
+        }
+        return almacen;
+    }
+    public static ArrayList<ArrayList<Double>> getAlmacenEntropia(ArrayList<int[]> dataset, double alpha,ArrayList<int[]> indices_adyacencia,HashMap<Integer,Integer>[] cards) throws IOException {
+        ArrayList<ArrayList<Double>> gran_almacen = new ArrayList<>();
+        for(int i = 0; i < indices_adyacencia.size();i++) {
+            ArrayList<Integer> pcc = new ArrayList<>();
+            ArrayList<Double> almacen = new ArrayList<>();
+            gran_almacen.add(entropiaGrafo(dataset,indices_adyacencia.get(i),alpha,0,pcc,almacen,cards));
+        }
+        return gran_almacen;
+    }
+    public static double entropiaSumada(ArrayList<ArrayList<Double>> almacen_entropia){
+        double aux = 0.0;
+        for(int i = 0; i < almacen_entropia.size();i++){
+            for (int j = 0; j< almacen_entropia.get(i).size();j++)
+            {
+                aux+=almacen_entropia.get(i).get(j);
+            }
+        }
+        return aux;
+    }
+    public static double akaike(double entropia, int k){
+        return((-1)*Math.log10(entropia)+ k);
+    }
+    public static double MDL(double entropia, int k, ArrayList<int[]> dataset){
+        int size_datset = dataset.size();
+        return (((-1)*Math.log10(entropia))+((k/2)*Math.log10(size_datset)));
+    }
     public static void main(String[] args) throws IOException {
         long start_time = System.nanoTime();
         double alpha = 1.0; //Alfa para Dirichlet
@@ -377,7 +460,7 @@ public class RateDSCorregidos {
         if(isRandom){
             ArrayList<int[]> shuffle = new ArrayList<>();
             for (int[] t:dataset_original) {
-                shuffle.add((int[])t.clone());
+                shuffle.add(t.clone());
             }
             Collections.shuffle(shuffle);
             Rate(shuffle,folds);
@@ -453,5 +536,16 @@ public class RateDSCorregidos {
         System.out.println("---------------------------------------");
         long finish_time = System.nanoTime() - start_time;
         System.out.println("Tiempo transcurrido: " + ((double) finish_time / 1_000_000_000.0) + "s");
+
+        //////////////
+        int k = parametrosCalculables(indices_adyacencia,dataset_original);
+        System.out.println("Parametros Calculables: " + k);
+        ArrayList<ArrayList<Double>> gran_almacen_entropia = getAlmacenEntropia(dataset_original,alpha,indices_adyacencia,card_original);
+        double entropia = entropiaSumada(gran_almacen_entropia);
+        double AIC = akaike(entropia, k);
+        double MDL = MDL(entropia,k,dataset_original);
+        System.out.println("Entropia: " + entropia);
+        System.out.println("AIC: " + AIC);
+        System.out.println("MDL: " + MDL);
     }
 }
